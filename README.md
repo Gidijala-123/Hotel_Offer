@@ -73,6 +73,10 @@ The API becomes available at `http://localhost:3000`, and Temporal UI is availab
 
 The API waits for healthy Redis and Temporal services, and the worker waits for those dependencies and the API. Temporal uses PostgreSQL for its persistence store.
 
+## GitHub Codespaces (no local Docker required)
+
+The repository includes a dev container configured with Docker-in-Docker. In GitHub, open the repository's **Code** menu, choose **Codespaces**, then **Create codespace on main**. Choose a machine with at least 4 cores and 16 GB RAM when available because Temporal and PostgreSQL run alongside the API and worker. Codespaces installs project dependencies and starts the Compose stack automatically. Wait for the forwarded port notification; open the **Hotel Offer API** port to use `/api/hotels?city=delhi`. Port 3000 is configured public so its temporary forwarded URL can be used outside the Codespace; Temporal UI on port 8080 remains private. Stop or delete the Codespace when finished because Codespaces usage may incur charges.
+
 ## Environment variables
 
 | Variable | Default | Description |
