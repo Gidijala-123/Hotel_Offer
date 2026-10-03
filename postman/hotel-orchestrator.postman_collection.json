@@ -1,0 +1,198 @@
+{
+  "info": {
+    "_postman_id": "96a2d4ad-230c-4c26-a3e7-2505a4f9a312",
+    "name": "Hotel Offer Orchestrator",
+    "description": "End-to-end checks for Temporal hotel aggregation, Redis price filtering, supplier degradation, validation, and health.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Valid city - deduplicated cheapest offers",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/hotels?city=delhi",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "hotels"],
+          "query": [{ "key": "city", "value": "delhi" }]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns 200 and an array', function () { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.be.an('array'); });",
+              "pm.test('hotel names are unique after normalization', function () { const body = pm.response.json(); const names = body.map(h => h.name.trim().toLowerCase()); pm.expect(new Set(names).size).to.eql(names.length); });",
+              "pm.test('chooses expected cheapest overlapping offers', function () { const body = pm.response.json(); const holtin = body.find(h => h.name.trim().toLowerCase() === 'holtin'); const radison = body.find(h => h.name.trim().toLowerCase() === 'radison'); pm.expect(holtin).to.include({ price: 5340, supplier: 'Supplier B', commissionPct: 20 }); pm.expect(radison).to.include({ price: 5900, supplier: 'Supplier A', commissionPct: 13 }); });",
+              "pm.test('each object has exactly the public response fields', function () { const keys = ['commissionPct', 'name', 'price', 'supplier']; pm.response.json().forEach(h => { pm.expect(Object.keys(h).sort()).to.eql(keys); pm.expect(h.name).to.be.a('string'); pm.expect(h.price).to.be.a('number'); pm.expect(h.supplier).to.be.oneOf(['Supplier A', 'Supplier B']); pm.expect(h.commissionPct).to.be.a('number'); }); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Price range - Redis score filtering",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/hotels?city=delhi&minPrice=5000&maxPrice=6000",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "hotels"],
+          "query": [
+            { "key": "city", "value": "delhi" },
+            { "key": "minPrice", "value": "5000" },
+            { "key": "maxPrice", "value": "6000" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('all returned prices are within the inclusive range', function () { pm.response.json().forEach(h => pm.expect(h.price).to.be.within(5000, 6000)); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "City with no results",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/hotels?city=chennai",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "hotels"],
+          "query": [{ "key": "city", "value": "chennai" }]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns an empty array with HTTP 200', function () { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.eql([]); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Supplier A down - graceful degradation",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/hotels?city=delhi&simulateDown=A",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "hotels"],
+          "query": [
+            { "key": "city", "value": "delhi" },
+            { "key": "simulateDown", "value": "A" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns 200 and data from the available supplier', function () { pm.response.to.have.status(200); const body = pm.response.json(); pm.expect(body).to.be.an('array').that.is.not.empty; pm.expect(body.every(h => h.supplier === 'Supplier B')).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Validation - missing city",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/hotels",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "hotels"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns a clear HTTP 400 validation error', function () { pm.response.to.have.status(400); pm.expect(pm.response.json().error).to.include('city'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Validation - minimum exceeds maximum",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/hotels?city=delhi&minPrice=9000&maxPrice=2000",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "hotels"],
+          "query": [
+            { "key": "city", "value": "delhi" },
+            { "key": "minPrice", "value": "9000" },
+            { "key": "maxPrice", "value": "2000" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('returns HTTP 400 for an invalid range', function () { pm.response.to.have.status(400); pm.expect(pm.response.json().error).to.include('minPrice'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('reports all required dependency statuses', function () { pm.expect(pm.response.code).to.be.oneOf([200, 503]); const body = pm.response.json(); pm.expect(body.status).to.be.oneOf(['ok', 'degraded', 'down']); pm.expect(body.suppliers.supplierA).to.be.oneOf(['up', 'down']); pm.expect(body.suppliers.supplierB).to.be.oneOf(['up', 'down']); pm.expect(body.redis).to.be.oneOf(['up', 'down']); pm.expect(body.temporal).to.be.oneOf(['up', 'down']); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
